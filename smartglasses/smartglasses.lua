@@ -108,10 +108,10 @@ function glasses.load_config()
 end
 
 -- initialize components (coordinator watchdog provided by startup)
----@param pkt_comms glasses_comms
+-- NOTE: comms is passed to threads directly, so no local reference is kept here
+---@param _pkt_comms glasses_comms unused; comms is passed to threads directly
 ---@param cfg glasses_config
-function glasses.init_core(pkt_comms, cfg)
-    comms_ref = pkt_comms
+function glasses.init_core(_pkt_comms, cfg)
     config = cfg
 end
 
