@@ -1,0 +1,152 @@
+# Deploy minified application, installation manifests, and shields versions
+name: Deploy Software System
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - devel
+
+# Permissions required for GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only allow one Pages deployment at a time
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      # Configure GitHub Pages
+      - name: Setup Pages
+        uses: actions/configure-pages@v6.0.0
+
+      # Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v6.3.0
+        with:
+          python-version: '3.10'
+
+      # Create deployment directories
+      - name: Create Deployment Directories
+        shell: bash
+        run: |
+          mkdir -p deploy/builds/main
+          mkdir -p deploy/builds/devel
+          mkdir -p deploy/manifests/main
+          mkdir -p deploy/manifests/devel
+
+      # ============================================================
+      # MAIN BRANCH
+      # ============================================================
+
+      - name: Checkout Main Branch
+        id: checkout-main
+        uses: actions/checkout@v7.0.0
+        with:
+          ref: main
+          path: branch-main
+          clean: true
+
+      - name: "[MAIN] Generate Minified Code"
+        id: minify-main
+        working-directory: branch-main
+        run: |
+          python build/gen_minified.py ../deploy/builds/main --deployment
+
+      - name: "[MAIN] Generate Installation Manifest and Shields JSON"
+        id: manifest-main
+        working-directory: branch-main
+        run: |
+          python build/gen_manifest.py ../deploy/builds/main --shields
+
+      - name: "[MAIN] Save Installation Manifest"
+        working-directory: branch-main
+        run: |
+          mv install_manifest.json ../deploy/manifests/main/install_manifest.json
+
+      - name: "[MAIN] Save Shields"
+        working-directory: branch-main
+        run: |
+          mv shields/*.json ../deploy/
+
+      # ============================================================
+      # DEVEL BRANCH
+      # ============================================================
+
+      - name: Checkout Development Branch
+        id: checkout-devel
+        uses: actions/checkout@v7.0.0
+        with:
+          ref: devel
+          path: branch-devel
+          clean: true
+
+      - name: "[DEVEL] Generate Minified Code"
+        id: minify-devel
+        working-directory: branch-devel
+        run: |
+          python build/gen_minified.py ../deploy/builds/devel --deployment
+
+      - name: "[DEVEL] Generate Installation Manifest"
+        id: manifest-devel
+        working-directory: branch-devel
+        run: |
+          python build/gen_manifest.py ../deploy/builds/devel
+
+      - name: "[DEVEL] Save Installation Manifest"
+        working-directory: branch-devel
+        run: |
+          mv install_manifest.json ../deploy/manifests/devel/install_manifest.json
+
+      # ============================================================
+      # VERIFY DEPLOYMENT
+      # ============================================================
+
+      - name: Verify Deployment Files
+        run: |
+          echo "========================================"
+          echo "DEPLOYMENT FILES"
+          echo "========================================"
+          find deploy -type f -print
+
+          echo ""
+          echo "========================================"
+          echo "MAIN MANIFEST"
+          echo "========================================"
+          cat deploy/manifests/main/install_manifest.json
+
+          echo ""
+          echo "========================================"
+          echo "DEVEL MANIFEST"
+          echo "========================================"
+          cat deploy/manifests/devel/install_manifest.json
+
+      # ============================================================
+      # UPLOAD TO GITHUB PAGES
+      # ============================================================
+
+      - name: Upload Pages Artifact
+        id: upload-artifacts
+        uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: deploy/
+
+      # ============================================================
+      # DEPLOY TO GITHUB PAGES
+      # ============================================================
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
