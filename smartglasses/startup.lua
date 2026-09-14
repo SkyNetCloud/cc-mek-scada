@@ -82,10 +82,8 @@ local function main()
     -- memory allocation
     ----------------------------------------
 
-    -- shared memory across threads
     ---@class glasses_shared_memory
     local __shared_memory = {
-        -- glasses system state flags
         ---@class glasses_state
         hud_state = {
             ui_ok = false,
@@ -93,29 +91,25 @@ local function main()
             shutdown = false
         },
 
-        -- core glasses devices
         hud_dev = {
             modem = ppm.get_wireless_modem(),
             overlay = peripheral.find("overlay")
         },
 
-        -- system objects
         hud_sys = {
             nic = nil,           ---@type nic
-            pocket_comms = nil,  ---@type pocket_comms
+            pocket_comms = nil,  ---@type glasses_comms
             api_wd = nil,        ---@type watchdog
         },
 
-        -- message queues
         q = {
             mq_render = mqueue.new()
         }
     }
 
-    local smem_dev = __shared_memory.hud_dev
-    local smem_sys = __shared_memory.hud_sys
-
-    local hud_state = __shared_memory.hud_state
+    local smem_dev   = __shared_memory.hud_dev
+    local smem_sys   = __shared_memory.hud_sys
+    local hud_state  = __shared_memory.hud_state
 
     ----------------------------------------
     -- setup system

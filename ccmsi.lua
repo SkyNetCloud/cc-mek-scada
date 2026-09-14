@@ -365,7 +365,7 @@ else
 	end
 
 	local next_opt = 3
-	local apps = { "reactor-plc", "rtu", "supervisor", "coordinator", "pocket", "installer" }
+	local apps = { "reactor-plc", "rtu", "supervisor", "coordinator", "pocket", "smartglasses", "installer" }
 	app = get_opt(OPTS[2], apps)
 	if app == nil then
 		for _, a in pairs(apps) do

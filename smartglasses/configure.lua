@@ -99,7 +99,7 @@ local fields = {
     { "HotkeyStart",  "START Hotkey",       "" },
     { "HUDScale",     "HUD Scale",          1.0 },
     { "LogMode",      "Log Mode",           log.MODE.APPEND },
-    { "LogPath",      "Log Path",           "/log.log" },
+    { "LogPath",      "Log Path",           "/smartglasses.log" },
     { "LogDebug",     "Log Debug Messages", false }
 }
 
@@ -171,6 +171,17 @@ local function config_view(display)
         main_pane.set_value(6)
     end
 
+    if fs.exists("/smartglasses.legacy") then
+        PushButton{
+            parent=main_page, x=2, y=y_start,
+            min_width=22, text="Import Legacy Config",
+            callback=function() tool_ctl.load_legacy() end,
+            fg_bg=cpair(colors.black, colors.cyan),
+            active_fg_bg=btn_act_fg_bg
+        }
+        y_start = y_start + 2
+    end
+
     PushButton{parent=main_page,x=2,y=y_start,min_width=18,text="Configure HUD",callback=function()main_pane.set_value(2)end,fg_bg=cpair(colors.black,colors.blue),active_fg_bg=btn_act_fg_bg}
 
     tool_ctl.view_cfg = PushButton{parent=main_page,x=2,y=y_start+2,min_width=20,text="View Configuration",callback=view_config,fg_bg=cpair(colors.black,colors.blue),active_fg_bg=btn_act_fg_bg,dis_fg_bg=btn_dis_fg_bg}
@@ -236,10 +247,11 @@ local function config_view(display)
 
     --#region System Configuration
 
-    local settings = { settings_cfg, ini_cfg, tmp_cfg, fields, load_settings }
-    local divs     = { ui_cfg, net_cfg, hud_cfg, log_cfg, summary }
+    -- NOTE: renamed local to cfg_sys to avoid shadowing the CC `settings` global
+    local cfg_sys = { settings_cfg, ini_cfg, tmp_cfg, fields, load_settings }
+    local divs    = { ui_cfg, net_cfg, hud_cfg, log_cfg, summary }
 
-    system.create(tool_ctl, main_pane, settings, divs, style, startup, exit)
+    system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
 
     --#endregion
 

@@ -2,7 +2,6 @@
 -- Main and render threads for the smart glasses HUD
 --
 
-local comms    = require("scada-common.comms")
 local log      = require("scada-common.log")
 local mqueue   = require("scada-common.mqueue")
 local ppm      = require("scada-common.ppm")
@@ -16,8 +15,6 @@ local threads = {}
 
 local MAIN_CLOCK   = 0.5
 local RENDER_SLEEP = 100
-
-local UNIT_COMMAND = comms.UNIT_COMMAND
 
 -- main thread
 ---@nodiscard
@@ -42,7 +39,6 @@ function threads.thread__main(smem)
         local function loop_tick()
             pocket_comms.link_update()
 
-            -- poll unit if linked
             if pocket_comms.is_api_linked() then
                 pocket_comms.api__get_unit(config.UnitID)
                 renderer.update_link(true, "")
@@ -124,7 +120,7 @@ function threads.thread__main(smem)
     return public
 end
 
--- render thread (does not draw, only re-renders on data change)
+-- render thread (re-renders on queue message)
 ---@nodiscard
 ---@param smem glasses_shared_memory
 function threads.thread__render(smem)

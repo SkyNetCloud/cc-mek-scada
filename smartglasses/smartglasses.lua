@@ -32,10 +32,10 @@ local io = {
     ps = psil.create()
 }
 
-local config = nil  ---@type glasses_config
-local comms_ref = nil ---@type glasses_comms
+local config = nil     ---@type glasses_config
+local comms_ref = nil  ---@type glasses_comms
 
----@type glasses_hud_unit
+---@class glasses_hud_unit
 local unit_data = {
     connected = false,
     alarms = {},
@@ -44,15 +44,16 @@ local unit_data = {
     turbine_data_tbl = {},
     tank_data_tbl = {},
     annunciator = {},
+    a_group = 0,
 }
 
 glasses.unit = unit_data
 
--- load the glasses configuration (mirrors pocket.load_config)
+-- load the glasses configuration
 function glasses.load_config()
     if not settings.load("/smartglasses.settings") then return false end
 
-    ---@type glasses_config
+    ---@class glasses_config
     local c = {}
 
     c.UnitID       = settings.get("UnitID")
@@ -109,7 +110,7 @@ function glasses.load_config()
     return true
 end
 
--- initialize facility-independent components
+-- initialize components (coordinator watchdog provided by startup)
 ---@param pkt_comms glasses_comms
 ---@param cfg glasses_config
 function glasses.init_core(pkt_comms, cfg)
@@ -129,7 +130,7 @@ function glasses.report_link_error(msg) io.ps.publish("link_msg", msg) end
 -- get the IO controller database
 function glasses.get_db() return io end
 
--- glasses coordinator-only communications
+-- glasses coordinator-only communications (API half of pocket.comms)
 ---@nodiscard
 ---@param version string
 ---@param nic nic
@@ -152,7 +153,6 @@ function glasses.comms(version, nic, api_watchdog)
     nic.closeAll()
     nic.open(config.PKT_Channel)
 
-    -- send a management packet to the coordinator
     local function _send_crd(msg_type, msg)
         local frame, mgmt = comms.scada_frame(), comms.mgmt_container()
         mgmt.make(msg_type, msg)
@@ -161,7 +161,6 @@ function glasses.comms(version, nic, api_watchdog)
         self.api.seq_num = self.api.seq_num + 1
     end
 
-    -- send an API packet to the coordinator
     local function _send_api(msg_type, msg)
         local frame, crdn = comms.scada_frame(), comms.crdn_container()
         crdn.make(msg_type, msg)
@@ -209,17 +208,14 @@ function glasses.comms(version, nic, api_watchdog)
         end
     end
 
-    -- unit command helpers (only UNIT_ID is used by the UI)
     function public.send_unit_command(cmd, unit, option)
         _send_api(CRDN_TYPE.UNIT_CMD, { cmd, unit, option })
     end
 
-    -- request one unit's data
     function public.api__get_unit(unit)
         if self.api.linked then _send_api(CRDN_TYPE.API_GET_UNIT, { unit }) end
     end
 
-    -- parse a packet
     function public.parse_packet(side, sender, reply_to, message, distance)
         local frame = nic.receive(side, sender, reply_to, message, distance)
 
@@ -358,31 +354,28 @@ function glasses.comms(version, nic, api_watchdog)
     return public
 end
 
--- record unit data from API_GET_UNIT (subset of pocket.iorx)
+-- record unit data from API_GET_UNIT
 ---@param data table
 function glasses.record_unit_data(data)
     local u = glasses.unit
 
-    u.connected   = data[2]
-    u.a_group     = data[4]
-    u.alarms      = data[5]
-    u.annunciator = data[6]
-    u.reactor_data = data[7]
-    u.boiler_data_tbl  = data[8]
-    u.turbine_data_tbl = data[9]
-    u.tank_data_tbl    = data[10]
+    u.connected         = data[2]
+    u.a_group           = data[4]
+    u.alarms            = data[5]
+    u.annunciator       = data[6]
+    u.reactor_data      = data[7]
+    u.boiler_data_tbl   = data[8]
+    u.turbine_data_tbl  = data[9]
+    u.tank_data_tbl     = data[10]
 
-    -- reset PSIL
-    local ps = io.ps
-
-    -- publish key fields
     local mek = u.reactor_data.mek_status or {}
+
+    local ps = io.ps
     ps.publish("temp", mek.temp)
     ps.publish("burn_rate", mek.burn_rate)
     ps.publish("act_burn_rate", mek.act_burn_rate)
     ps.publish("max_burn", u.reactor_data.mek_struct and u.reactor_data.mek_struct.max_burn)
-
-    ps.publish("reactor_status", u.reactor_data.mek_status and u.reactor_data.mek_status.status)
+    ps.publish("reactor_status", mek.status)
     ps.publish("connected", u.connected)
 end
 
