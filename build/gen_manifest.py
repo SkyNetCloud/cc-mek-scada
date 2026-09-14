@@ -60,7 +60,8 @@ def make_manifest(size):
             "rtu" : get_version("./rtu/startup.lua"),
             "supervisor" : get_version("./supervisor/startup.lua"),
             "coordinator" : get_version("./coordinator/startup.lua"),
-            "pocket" : get_version("./pocket/startup.lua")
+            "pocket" : get_version("./pocket/startup.lua"),
+            "smartglasses" : get_version("./smartglasses/startup.lua")
         },
         "files" : {
             # common files
@@ -74,13 +75,15 @@ def make_manifest(size):
             "supervisor" : list_files("./supervisor"),
             "coordinator" : list_files("./coordinator"),
             "pocket" : list_files("./pocket"),
+            "smartglasses" : list_files("./smartglasses"),
         },
         "depends" : {
             "reactor-plc" : [ "system", "common", "graphics", "lockbox" ],
             "rtu" : [ "system", "common", "graphics", "lockbox" ],
             "supervisor" : [ "system", "common", "graphics", "lockbox" ],
             "coordinator" : [ "system", "common", "graphics", "lockbox" ],
-            "pocket" : [ "system", "common", "graphics", "lockbox" ]
+            "pocket" : [ "system", "common", "graphics", "lockbox" ],
+            "smartglasses" : [ "system", "common", "graphics", "lockbox" ]
         },
         "sizes" : {
             # manifest file estimate
@@ -96,6 +99,7 @@ def make_manifest(size):
             "supervisor" : dir_size("./supervisor"),
             "coordinator" : dir_size("./coordinator"),
             "pocket" : dir_size("./pocket"),
+            "smartglasses" : dir_size("./smartglasses"),
         }
     }
 
@@ -153,4 +157,3 @@ if __name__ == "__main__":
             }, shields_file)
 
             shields_file.close()
-

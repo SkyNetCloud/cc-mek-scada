@@ -81,7 +81,8 @@ manifest = {
         "rtu" : get_version("./rtu/startup.lua"),
         "supervisor" : get_version("./supervisor/startup.lua"),
         "coordinator" : get_version("./coordinator/startup.lua"),
-        "pocket" : get_version("./pocket/startup.lua")
+        "pocket" : get_version("./pocket/startup.lua"),
+        "smartglasses" : get_version("./smartglasses/startup.lua")
     },
     "files" : {
         # common files
@@ -95,6 +96,7 @@ manifest = {
         "supervisor" : encode_recursive(path_prefix + "./supervisor"),
         "coordinator" : encode_recursive(path_prefix + "./coordinator"),
         "pocket" : encode_recursive(path_prefix + "./pocket"),
+        "smartglasses" : encode_recursive(path_prefix + "./smartglasses"),
     },
     "install_files" : {
         # common files
@@ -108,6 +110,7 @@ manifest = {
         "supervisor" : list_files("./supervisor"),
         "coordinator" : list_files("./coordinator"),
         "pocket" : list_files("./pocket"),
+        "smartglasses" : list_files("./smartglasses"),
     },
     "depends" : [ "system", "scada-common", "graphics", "lockbox" ]
 }
@@ -158,7 +161,7 @@ f_d.write(body_b)
 f_d.close()
 
 # application bundled files
-for app in [ "reactor-plc", "rtu", "supervisor", "coordinator", "pocket" ]:
+for app in [ "reactor-plc", "rtu", "supervisor", "coordinator", "pocket", "smartglasses" ]:
     app_file = app + "_" + build + ".lua"
 
     f_script = open("./build/offline/_offline.lua", "r")
