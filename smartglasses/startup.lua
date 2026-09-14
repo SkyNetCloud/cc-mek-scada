@@ -21,7 +21,7 @@ local glasses   = require("smartglasses_display.smartglasses")
 local renderer  = require("smartglasses_display.renderer")
 local threads   = require("smartglasses_display.threads")
 
-local HUD_VERSION = "smartglasses_display-1.0.0"
+local HUD_VERSION = "1.3.2"
 
 local println    = util.println
 local println_ts = util.println_ts

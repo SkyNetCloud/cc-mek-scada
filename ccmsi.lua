@@ -22,7 +22,7 @@ local CCMSI_VERSION = "2.2"
 local IS_PKT = pocket ~= nil -- luacheck: ignore pocket
 
 local INSTALL_DIR = "/.install-cache"
-local DEPLOY_DIR = "https://mikaylafischler.github.io/cc-mek-scada/"
+local DEPLOY_DIR = "https://skynetcloud.github.io/cc-mek-scada/"
 local MANIFEST_DIR = DEPLOY_DIR.."manifests/"
 local BUILD_DIR = DEPLOY_DIR.."builds/"
 
