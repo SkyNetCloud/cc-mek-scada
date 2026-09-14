@@ -106,8 +106,6 @@ function glasses.load_config()
     return true
 end
 
----@param _pkt_comms glasses_comms
----@param cfg glasses_config
 function glasses.init_core(_pkt_comms, cfg)
     config = cfg
 end
@@ -120,10 +118,6 @@ function glasses.report_link_error(msg) io.ps.publish("link_msg", msg) end
 
 function glasses.get_db() return io end
 
----@nodiscard
----@param version string
----@param nic nic
----@param api_watchdog watchdog
 function glasses.comms(version, nic, api_watchdog)
     local self = {
         api = {
@@ -201,7 +195,12 @@ function glasses.comms(version, nic, api_watchdog)
     end
 
     function public.api__get_unit(unit)
-        if self.api.linked then _send_api(CRDN_TYPE.API_GET_UNIT, { unit }) end
+        if self.api.linked then
+            _send_api(CRDN_TYPE.API_GET_UNIT, { unit })
+            log.debug("sent API_GET_UNIT for unit " .. tostring(unit))
+        else
+            log.debug("skipping API_GET_UNIT because not linked")
+        end
     end
 
     function public.parse_packet(side, sender, reply_to, message, distance)
@@ -272,11 +271,20 @@ function glasses.comms(version, nic, api_watchdog)
             ---@cast packet crdn_packet
             if self.api.linked then
                 if packet.type == CRDN_TYPE.API_GET_UNIT then
-                    if _check_length(packet, 13)
+                    local len = (type(packet.data) == "table") and #packet.data or -1
+                    if type(packet.data) == "table"
+                       and len >= 10
                        and type(packet.data[1]) == "number"
                        and packet.data[1] == config.UnitID
                     then
+                        --log.info("API_GET_UNIT reply accepted (len=" .. tostring(len) .. ")")
                         glasses.record_unit_data(packet.data)
+                    else
+                        log.warning(util.sprintf(
+                            "API_GET_UNIT reply rejected: len=%s data1=%s expected=%s",
+                            tostring(len),
+                            tostring(packet.data and packet.data[1]),
+                            tostring(config.UnitID)))
                     end
                 end
             else
@@ -353,6 +361,11 @@ function glasses.record_unit_data(data)
     u.boiler_data_tbl   = data[8]
     u.turbine_data_tbl  = data[9]
     u.tank_data_tbl     = data[10]
+
+    -- ONE-SHOT DUMP so we can see the real field names in the payload
+    -- log.info("REACTOR_DUMP " .. textutils.serialize(u.reactor_data))
+    -- log.info("ANNUNC_DUMP " .. textutils.serialize(u.annunciator))
+    -- log.info("ALARMS_DUMP " .. textutils.serialize(u.alarms))
 
     local mek = u.reactor_data.mek_status or {}
 

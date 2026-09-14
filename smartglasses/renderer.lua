@@ -3,6 +3,7 @@
 -- Compact HUD layout for Smart Glasses
 --
 
+local log        = require("scada-common.log")
 local glasses    = require("smartglasses.smartglasses")
 local types      = require("scada-common.types")
 
@@ -31,7 +32,6 @@ local C_ALARM       = 0xFF3333
 local C_FLASH       = 0xFFFF66
 local C_HEADER      = 0x33CCFF
 
--- layout origin and dimensions
 local HUD_X, HUD_Y = 10, 10
 local HUD_W, HUD_H = 200, 130
 local ROW_H = 12
@@ -42,6 +42,7 @@ local ui = {
     scale = 1.0,
     unit_id = 1,
     flash_until = 0,
+    logged_failures = {},
 }
 
 local function tripped(state)
@@ -58,10 +59,24 @@ local function pct(v)
     return string.format("%.0f%%", v * 100)
 end
 
--- =========================================================================
--- Overlay API wrappers
--- =========================================================================
+local function log_once(tag, msg)
+    if not ui.logged_failures[tag] then
+        ui.logged_failures[tag] = true
+        log.error(tag .. ": " .. tostring(msg))
+    end
+end
 
+-- force the overlay to sync to the client
+local function overlay_update()
+    local o = ui.overlay
+    if o == nil then return end
+    if type(o.update) == "function" then
+        local ok, err = pcall(o.update)
+        if not ok then log_once("overlay.update", err) end
+    end
+end
+
+-- create a text element
 ---@param x number
 ---@param y number
 ---@param text string
@@ -80,9 +95,11 @@ local function mk_text(x, y, text, color, size)
         shadow = true,
     })
     if ok then return handle end
+    log_once("overlay.createText", handle)
     return nil
 end
 
+-- create a rectangle
 ---@param x number
 ---@param y number
 ---@param w number
@@ -100,25 +117,28 @@ local function mk_rect(x, y, w, h, color)
         filled = false,
     })
     if ok then return handle end
+    log_once("overlay.createRectangle", handle)
     return nil
 end
 
+-- set text content: handle.setContent(value)
 ---@param handle table|nil
 ---@param text string
 local function set_text(handle, text)
     if handle == nil then return end
-    if type(handle.setContent) == "function" then
-        pcall(handle.setContent, handle, tostring(text))
-    end
+    if type(handle.setContent) ~= "function" then return end
+    local ok, err = pcall(handle.setContent, tostring(text))
+    if not ok then log_once("handle.setContent", err) end
 end
 
+-- set color: handle.setColor(value)
 ---@param handle table|nil
 ---@param color integer
 local function set_color(handle, color)
     if handle == nil then return end
-    if type(handle.setColor) == "function" then
-        pcall(handle.setColor, handle, color)
-    end
+    if type(handle.setColor) ~= "function" then return end
+    local ok, err = pcall(handle.setColor, color)
+    if not ok then log_once("handle.setColor", err) end
 end
 
 -- =========================================================================
@@ -134,6 +154,13 @@ function renderer.try_start_hud(overlay)
         ui.overlay = overlay
         ui.scale = glasses.config.HUDScale or 1.0
         ui.unit_id = glasses.config.UnitID or 1
+
+        -- enable auto-update if the module supports it.
+        -- NOTE: setAutoUpdate is a DOT method: overlay.setAutoUpdate(bool)
+        if type(overlay.setAutoUpdate) == "function" then
+            local ok, err = pcall(overlay.setAutoUpdate, true)
+            if not ok then log_once("overlay.setAutoUpdate", err) end
+        end
 
         status, msg = pcall(function ()
             local R = ui.refs
@@ -171,9 +198,7 @@ function renderer.try_start_hud(overlay)
 
             R.alarm   = mk_text(HUD_X + 8, HUD_Y + 118, "", C_OK, ui.scale)
 
-            if type(ui.overlay.update) == "function" then
-                pcall(ui.overlay.update)
-            end
+            overlay_update()
         end)
 
         if not status then ui.overlay = nil end
@@ -208,20 +233,9 @@ function renderer.update_link(linked, err)
         if err and err ~= "" then text = "LINK FAILED: " .. err end
         set_text(R.link, text)
         set_color(R.link, C_LINK_WARN)
-
-        set_text(R.temp_val,  "-- K")
-        set_text(R.burn_val,  "-- / --")
-        set_text(R.dmg_val,   "-- %")
-        set_text(R.fuel_val,  "--")
-        set_text(R.ccool_val, "--")
-        set_text(R.waste_val, "--")
-        set_text(R.status1,   "")
-        set_text(R.status2,   "")
-        set_text(R.rcs,       "RCS: --")
-        set_text(R.rps,       "RPS: --")
-        set_text(R.alarm,     "")
-        set_color(R.frame,    C_FRAME_OK)
     end
+
+    overlay_update()
 end
 
 function renderer.render_unit()
@@ -297,6 +311,7 @@ function renderer.render_unit()
     if os.clock() < ui.flash_until then
         set_color(R.alarm, C_FLASH)
         set_color(R.frame, C_FRAME_WARN)
+        overlay_update()
         return
     end
 
@@ -311,6 +326,8 @@ function renderer.render_unit()
         set_color(R.alarm, C_ALARM)
         set_color(R.frame, C_FRAME_ALARM)
     end
+
+    overlay_update()
 end
 
 ---@param text string
@@ -319,6 +336,7 @@ function renderer.flash_message(text)
     set_text(ui.refs.alarm, text)
     set_color(ui.refs.alarm, C_FLASH)
     ui.flash_until = os.clock() + 1.5
+    overlay_update()
 end
 
 return renderer

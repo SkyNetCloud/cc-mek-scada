@@ -16,6 +16,34 @@ local threads = {}
 local MAIN_CLOCK   = 0.5
 local RENDER_SLEEP = 100
 
+local MQ_KEY_RENDER = "RENDER"
+
+-- map of CC:Tweaked key codes to printable letters.
+-- built at load time so any missing entries in the 'keys' table don't crash startup.
+local LETTER_KEYS = {}
+do
+    local pairs_list = {
+        { "a", "A" }, { "b", "B" }, { "c", "C" }, { "d", "D" }, { "e", "E" },
+        { "f", "F" }, { "g", "G" }, { "h", "H" }, { "i", "I" }, { "j", "J" },
+        { "k", "K" }, { "l", "L" }, { "m", "M" }, { "n", "N" }, { "o", "O" },
+        { "p", "P" }, { "q", "Q" }, { "r", "R" }, { "s", "S" }, { "t", "T" },
+        { "u", "U" }, { "v", "V" }, { "w", "W" }, { "x", "X" }, { "y", "Y" },
+        { "z", "Z" },
+        { "zero", "0" }, { "one", "1" }, { "two", "2" }, { "three", "3" },
+        { "four", "4" }, { "five", "5" }, { "six", "6" }, { "seven", "7" },
+        { "eight", "8" }, { "nine", "9" },
+        { "escape", "ESC" },
+    }
+
+    for _, pair in ipairs(pairs_list) do
+        local cc_name = pair[1]
+        local letter  = pair[2]
+        if keys[cc_name] ~= nil then
+            LETTER_KEYS[keys[cc_name]] = letter
+        end
+    end
+end
+
 function threads.thread__main(smem)
     ---@class parallel_thread
     local public = {}
@@ -30,8 +58,23 @@ function threads.thread__main(smem)
         local pocket_comms = smem.hud_sys.pocket_comms
         local api_wd       = smem.hud_sys.api_wd
         local nic          = smem.hud_sys.nic
+        local render_queue = smem.q.mq_render
+        local klog         = smem.callbacks and smem.callbacks.klog or function () end
 
-        local config       = glasses.config
+        local config         = glasses.config
+        local keyboard_ready = smem.hud_dev.keyboard ~= nil
+
+        local hotkeys_bound = (config.HotkeyScram ~= "" or config.HotkeyStart ~= "")
+
+        if not keyboard_ready then
+            log.info("keyboard module not present; key events will not fire")
+        elseif not hotkeys_bound then
+            log.info("no hotkeys configured; press a key on the keyboard to log it")
+        end
+
+        local function request_render()
+            render_queue.push_data(MQ_KEY_RENDER, true)
+        end
 
         local function loop_tick()
             pocket_comms.link_update()
@@ -47,7 +90,63 @@ function threads.thread__main(smem)
             loop_clock.start()
         end
 
+        ---@param key_code number
+        ---@param is_held boolean
+        local function handle_key_event(key_code, is_held)
+            local letter = LETTER_KEYS[key_code] or string.format("code=%d", key_code)
+
+            klog(string.format("key=%s code=%s held=%s",
+                tostring(letter), tostring(key_code), tostring(is_held)))
+
+            log.info(string.format("key event: letter=%s code=%s held=%s",
+                tostring(letter), tostring(key_code), tostring(is_held)))
+
+            -- ignore held-key repeats so a key held down doesn't spam commands
+            if is_held then return end
+
+            if not pocket_comms.is_api_linked() then
+                return
+            end
+
+            -- ESC does nothing special here; just don't send it as a command
+            if letter == "ESC" then
+                return
+            end
+
+            local handled = false
+
+            if config.HotkeyScram ~= "" and letter == config.HotkeyScram then
+                pocket_comms.send_scram(config.UnitID)
+                renderer.flash_message("SCRAM SENT")
+                log.info("hotkey SCRAM sent for unit " .. config.UnitID)
+                handled = true
+            elseif config.HotkeyStart ~= "" and letter == config.HotkeyStart then
+                pocket_comms.send_start(config.UnitID)
+                renderer.flash_message("START SENT")
+                log.info("hotkey START sent for unit " .. config.UnitID)
+                handled = true
+            end
+
+            if not handled and not hotkeys_bound then
+                renderer.flash_message("KEY: " .. letter)
+            end
+        end
+
         api_wd.feed()
+
+        -- suppress rapid repeats of the same event name in the key log
+        local EVENT_LOG_DEDUP_MS = 1000
+        local last_event_name = nil
+        local last_event_ms   = 0
+
+        local function trace_event(event_name)
+            local now = util.time_ms()
+            if event_name ~= last_event_name or (now - last_event_ms) > EVENT_LOG_DEDUP_MS then
+                last_event_name = event_name
+                last_event_ms   = now
+                klog(string.format("(event) name=%s", tostring(event_name)))
+            end
+        end
 
         while true do
             local event, param1, param2, param3, param4, param5 = util.pull_event()
@@ -55,7 +154,7 @@ function threads.thread__main(smem)
             if event == "modem_message" then
                 local packet = pocket_comms.parse_packet(param1, param2, param3, param4, param5)
                 pocket_comms.handle_packet(packet)
-                renderer.render_unit()
+                request_render()
             elseif event == "timer" then
                 if loop_clock.is_clock(param1) then
                     loop_tick()
@@ -65,19 +164,22 @@ function threads.thread__main(smem)
                 else
                     tcd.handle(param1)
                 end
-            elseif event == "glasses_key_pressed" then
-                local key = param1
-                if pocket_comms.is_api_linked() then
-                    if config.HotkeyScram ~= "" and key == config.HotkeyScram then
-                        pocket_comms.send_scram(config.UnitID)
-                        renderer.flash_message("SCRAM SENT")
-                        log.info("hotkey SCRAM sent for unit " .. config.UnitID)
-                    elseif config.HotkeyStart ~= "" and key == config.HotkeyStart then
-                        pocket_comms.send_start(config.UnitID)
-                        renderer.flash_message("START SENT")
-                        log.info("hotkey START sent for unit " .. config.UnitID)
-                    else
-                        renderer.flash_message("KEY: " .. tostring(key))
+            else
+                -- trace every non-modem, non-timer event so we can see what
+                -- the keyboard module actually fires on this AP version
+                trace_event(event)
+
+                if event == "keyboard_open" then
+                    log.info("keyboard opened")
+                    klog("(keyboard_open)")
+                    renderer.flash_message("KEYBOARD OPEN")
+                elseif event == "keyboard_close" then
+                    log.info("keyboard closed")
+                    klog("(keyboard_close)")
+                    renderer.flash_message("KEYBOARD CLOSED")
+                elseif event == "key" or event == "key_up" then
+                    if keyboard_ready then
+                        handle_key_event(param1, param2)
                     end
                 end
             end
@@ -127,7 +229,7 @@ function threads.thread__render(smem)
         local hud_state    = smem.hud_state
         local render_queue = smem.q.mq_render
 
-        local last_update = util.time()
+        local dirty = false
 
         while true do
             while render_queue.ready() and not hud_state.shutdown do
@@ -136,12 +238,20 @@ function threads.thread__render(smem)
                 if msg ~= nil and msg.qtype == mqueue.TYPE.DATA then
                     local cmd = msg.message
 
-                    if cmd.key == "RENDER" then
-                        renderer.render_unit()
+                    if cmd ~= nil and cmd.key == MQ_KEY_RENDER then
+                        dirty = true
                     end
                 end
 
                 util.nop()
+            end
+
+            if dirty and not hud_state.shutdown then
+                local ok, err = pcall(renderer.render_unit)
+                if not ok then
+                    log.error("render_unit failed: " .. tostring(err))
+                end
+                dirty = false
             end
 
             if hud_state.shutdown then
@@ -149,7 +259,7 @@ function threads.thread__render(smem)
                 break
             end
 
-            last_update = util.adaptive_delay(RENDER_SLEEP, last_update)
+            util.psleep(0.05)
         end
     end
 

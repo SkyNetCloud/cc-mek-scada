@@ -27,6 +27,7 @@ local println    = util.println
 local println_ts = util.println_ts
 
 local ERROR_LOG_PATH = "/smartglasses_errors.log"
+local KEY_LOG_PATH   = "/smartglasses_keys.log"
 
 local function elog(msg)
     local ok, err = pcall(function ()
@@ -50,18 +51,67 @@ local function elog_error(where, err)
     elog("========================================")
 end
 
+local function klog(msg)
+    local ok, err = pcall(function ()
+        local f = fs.open(KEY_LOG_PATH, "a")
+        if f then
+            f.writeLine(string.format("[%s] %s", os.date("%Y-%m-%d %H:%M:%S"), tostring(msg)))
+            f.flush()
+            f.close()
+        end
+    end)
+    if not ok then println("[klog failed] " .. tostring(err)) end
+end
+
 if not _is_glasses_env then
     println("You can only use this application on a computer wearing Smart Glasses.")
     elog("environment check failed: not running with smartglasses global")
     return
 end
 
--- overlay module lives in smartglasses.modules, not as a peripheral
-local overlay_module = smartglasses.modules['advancedperipherals:overlay']
+-- =========================================================================
+-- Module lookup. All modules are on the smartglasses global, not peripheral.find.
+-- We want the Keyboard Module so the player can press plain keys.
+-- =========================================================================
+
+-- Log every module the game is exposing, so we can see the real IDs.
+do
+    local ids = {}
+    local modules_table = smartglasses.modules or {}
+    for id, _ in pairs(modules_table) do
+        table.insert(ids, tostring(id))
+    end
+    table.sort(ids)
+    log.info("smartglasses.modules present: " .. table.concat(ids, ", "))
+    klog("smartglasses.modules present: " .. table.concat(ids, ", "))
+end
+
+local overlay_module  = smartglasses.modules['advancedperipherals:overlay']
+local keyboard_module = smartglasses.modules['advancedperipherals:keyboard']
+
+-- Fallback: if the direct ID lookup fails, scan for the first module whose
+-- name contains "keyboard" or "hotkey". This tolerates AP versions that
+-- expose them under slightly different IDs.
+if keyboard_module == nil then
+    for id, mod in pairs(smartglasses.modules or {}) do
+        local lname = string.lower(tostring(id))
+        if string.find(lname, "keyboard", 1, true) or string.find(lname, "hotkey", 1, true) then
+            keyboard_module = mod
+            log.info("keyboard/hotkey module resolved by scan: " .. tostring(id))
+            break
+        end
+    end
+end
+
 if overlay_module == nil then
     println("startup> Advanced Peripherals Overlay Module not equipped")
     elog("overlay module 'advancedperipherals:overlay' not present in smartglasses.modules")
     return
+end
+
+if keyboard_module == nil then
+    println("startup> Keyboard / Hotkey Module not equipped - hotkeys disabled")
+    elog("no keyboard or hotkey module found in smartglasses.modules")
 end
 
 ----------------------------------------
@@ -103,6 +153,8 @@ log.info("========================================")
 crash.set_env("glasses_hud", HUD_VERSION)
 crash.dbg_log_env()
 
+klog("(boot)")
+
 ----------------------------------------
 -- main application
 ----------------------------------------
@@ -124,6 +176,7 @@ local function main()
         hud_dev = {
             modem = ppm.get_wireless_modem(),
             overlay = overlay_module,
+            keyboard = keyboard_module,   -- may be nil
         },
 
         hud_sys = {
@@ -134,7 +187,11 @@ local function main()
 
         q = {
             mq_render = mqueue.new()
-        }
+        },
+
+        callbacks = {
+            klog = klog,
+        },
     }
 
     local smem_dev   = __shared_memory.hud_dev
