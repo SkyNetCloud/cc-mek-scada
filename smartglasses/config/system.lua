@@ -3,7 +3,6 @@
 --
 
 local log         = require("scada-common.log")
-local types       = require("scada-common.types")
 local util        = require("scada-common.util")
 
 local core        = require("graphics.core")

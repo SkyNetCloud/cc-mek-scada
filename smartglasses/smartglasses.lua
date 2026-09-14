@@ -4,9 +4,7 @@
 
 local comms   = require("scada-common.comms")
 local log     = require("scada-common.log")
-local network = require("scada-common.network")
 local psil    = require("scada-common.psil")
-local types   = require("scada-common.types")
 local util    = require("scada-common.util")
 
 local PROTOCOL      = comms.PROTOCOL
