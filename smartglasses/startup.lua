@@ -3,7 +3,7 @@
 --
 
 ---@diagnostic disable-next-line: lowercase-global
-smartglasses = smartglasses or periphemu    -- luacheck: ignore smartglasses
+smartglasses = smartglasses or periphemu
 
 local _is_glasses_env = smartglasses
 
