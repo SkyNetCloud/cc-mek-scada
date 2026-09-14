@@ -16,9 +16,6 @@ local threads = {}
 local MAIN_CLOCK   = 0.5
 local RENDER_SLEEP = 100
 
--- main thread
----@nodiscard
----@param smem glasses_shared_memory
 function threads.thread__main(smem)
     ---@class parallel_thread
     local public = {}
@@ -120,9 +117,6 @@ function threads.thread__main(smem)
     return public
 end
 
--- render thread (re-renders on queue message)
----@nodiscard
----@param smem glasses_shared_memory
 function threads.thread__render(smem)
     ---@class parallel_thread
     local public = {}

@@ -30,7 +30,7 @@ local io = {
     ps = psil.create()
 }
 
-local config = nil     ---@type glasses_config
+local config = nil
 
 ---@class glasses_hud_unit
 local unit_data = {
@@ -46,7 +46,6 @@ local unit_data = {
 
 glasses.unit = unit_data
 
--- load the glasses configuration
 function glasses.load_config()
     if not settings.load("/smartglasses.settings") then return false end
 
@@ -107,27 +106,20 @@ function glasses.load_config()
     return true
 end
 
--- initialize components (coordinator watchdog provided by startup)
--- NOTE: comms is passed to threads directly, so no local reference is kept here
----@param _pkt_comms glasses_comms unused; comms is passed to threads directly
+---@param _pkt_comms glasses_comms
 ---@param cfg glasses_config
 function glasses.init_core(_pkt_comms, cfg)
     config = cfg
 end
 
--- set network link state
----@param state GLASSES_LINK_STATE
 function glasses.report_link_state(state)
     io.ps.publish("link_state", state)
 end
 
--- show link error message
 function glasses.report_link_error(msg) io.ps.publish("link_msg", msg) end
 
--- get the IO controller database
 function glasses.get_db() return io end
 
--- glasses coordinator-only communications (API half of pocket.comms)
 ---@nodiscard
 ---@param version string
 ---@param nic nic
@@ -138,7 +130,7 @@ function glasses.comms(version, nic, api_watchdog)
             linked = false,
             addr = comms.BROADCAST,
             seq_num = util.time_ms() * 10,
-            r_seq_num = nil, ---@type nil|integer
+            r_seq_num = nil,
             last_est_ack = ESTABLISH_ACK.ALLOW
         },
         establish_delay_counter = 0
@@ -146,7 +138,6 @@ function glasses.comms(version, nic, api_watchdog)
 
     comms.set_trusted_range(config.TrustedRange)
 
-    -- configure network channels
     nic.closeAll()
     nic.open(config.PKT_Channel)
 
@@ -261,7 +252,6 @@ function glasses.comms(version, nic, api_watchdog)
             return
         end
 
-        -- sequence number check (mirrors pocket.comms)
         if self.api.r_seq_num == nil then
             self.api.r_seq_num = packet.scada_frame.seq_num() + 1
         elseif self.api.r_seq_num ~= packet.scada_frame.seq_num() then
@@ -351,7 +341,6 @@ function glasses.comms(version, nic, api_watchdog)
     return public
 end
 
--- record unit data from API_GET_UNIT
 ---@param data table
 function glasses.record_unit_data(data)
     local u = glasses.unit

@@ -25,7 +25,6 @@ local cpair = core.cpair
 
 local CENTER = core.ALIGN.CENTER
 
--- changes to the config format to let the user know
 local changes = {
     { "v1.0.0", { "Initial Smart Glasses HUD config" } }
 }
@@ -53,16 +52,11 @@ local tool_ctl = {
     has_config = false,
     viewing_config = false,
 
-    view_cfg = nil,       ---@type PushButton
-    settings_apply = nil, ---@type PushButton
+    view_cfg = nil,
+    settings_apply = nil,
 
-    gen_summary = nil,    ---@type function
-    load_legacy = nil,    ---@type function
-
-    dw_free_space = nil,  ---@type TextBox
-    dw_log_size = nil,    ---@type TextBox
-    dw_del_log_btn = nil, ---@type PushButton
-    dw_continue = nil     ---@type PushButton
+    gen_summary = nil,
+    load_legacy = nil,
 }
 
 ---@class glasses_config
@@ -86,7 +80,6 @@ local ini_cfg = {}
 ---@class glasses_config
 local settings_cfg = {}
 
--- all settings fields, their nice names, and their default values
 local fields = {
     { "UnitID",       "Reactor Unit ID",    1 },
     { "CRD_Channel",  "CRD Channel",        16243 },
@@ -102,9 +95,8 @@ local fields = {
     { "LogDebug",     "Log Debug Messages", false }
 }
 
--- load data from the settings file
 ---@param target glasses_config
----@param raw boolean? true to not use default values
+---@param raw boolean?
 local function load_settings(target, raw)
     for _, v in pairs(fields) do settings.unset(v[1]) end
 
@@ -115,7 +107,6 @@ local function load_settings(target, raw)
     return loaded
 end
 
--- create the config view
 ---@param display DisplayBox
 local function config_view(display)
     local bw_fg_bg      = style.bw_fg_bg
@@ -125,6 +116,8 @@ local function config_view(display)
     local btn_dis_fg_bg = style.btn_dis_fg_bg
 
     local function exit() os.queueEvent("terminate") end
+
+    local term_w, term_h = term.getSize()
 
     TextBox{parent=display,y=1,text="Smart Glasses HUD Configurator",alignment=CENTER,fg_bg=style.header}
 
@@ -137,11 +130,10 @@ local function config_view(display)
     local log_cfg   = Div{parent=root_pane_div,y=1}
     local summary   = Div{parent=root_pane_div,y=1}
     local changelog = Div{parent=root_pane_div,y=1}
-    local disk_warn = Div{parent=root_pane_div,y=1}
 
     local main_pane = MultiPane{
         parent=root_pane_div, y=1,
-        panes={main_page, ui_cfg, net_cfg, hud_cfg, log_cfg, summary, changelog, disk_warn}
+        panes={main_page, ui_cfg, net_cfg, hud_cfg, log_cfg, summary, changelog}
     }
 
     local req_space = log.MIN_SPACE
@@ -149,19 +141,69 @@ local function config_view(display)
         req_space = math.max(0, req_space - fs.getSize("/smartglasses.settings"))
     end
 
-    -- show disk space warning if needed
-    if fs.getFreeSpace("/") < req_space then main_pane.set_value(8) end
+    local low_space = fs.getFreeSpace("/") < req_space
 
     --#region Main Page
 
-    local y_start = 7
+    local main_h = math.max(4, term_h - 3)
 
-    TextBox{parent=main_page,x=2,y=2,height=4,text="Welcome to the Smart Glasses HUD configurator! Please select one of the following options."}
+    local main_list = ListBox{
+        parent=main_page,
+        y=1, x=1,
+        height=main_h,
+        width=term_w,
+        scroll_height=64,
+        fg_bg=style.root,
+        nav_fg_bg=g_lg_fg_bg,
+        nav_active=cpair(colors.black, colors.gray),
+    }
+
+    local function add_text(text, fg_bg)
+        TextBox{ parent=main_list, text=text, fg_bg=fg_bg or style.root }
+    end
+
+    local function add_blank()
+        TextBox{ parent=main_list, text="", fg_bg=style.root }
+    end
+
+    local function add_button(text, opts)
+        opts.parent = main_list
+        opts.text = text
+        return PushButton(opts)
+    end
+
+    add_text("Smart Glasses HUD Configurator", style.root)
+    add_blank()
 
     if tool_ctl.ask_config then
-        TextBox{parent=main_page,x=2,y=y_start,height=4,width=49,text="Please configure before starting up.",fg_bg=cpair(colors.red,colors.lightGray)}
-        y_start = y_start + 3
+        add_text("Please configure before starting up.",
+            cpair(colors.red, colors.lightGray))
+        add_blank()
     end
+
+    if low_space then
+        add_text("Warning: low disk space.",
+            cpair(colors.orange, colors.lightGray))
+        add_text("Saving config may fail.",
+            cpair(colors.orange, colors.lightGray))
+        add_blank()
+    end
+
+    if fs.exists("/smartglasses.legacy") then
+        add_button("Import Legacy Config", {
+            min_width=22,
+            callback=function() tool_ctl.load_legacy() end,
+            fg_bg=cpair(colors.black, colors.cyan),
+            active_fg_bg=btn_act_fg_bg
+        })
+    end
+
+    add_button("Configure HUD", {
+        min_width=16,
+        callback=function() main_pane.set_value(2) end,
+        fg_bg=cpair(colors.black, colors.blue),
+        active_fg_bg=btn_act_fg_bg
+    })
 
     local function view_config()
         tool_ctl.viewing_config = true
@@ -170,83 +212,64 @@ local function config_view(display)
         main_pane.set_value(6)
     end
 
-    if fs.exists("/smartglasses.legacy") then
-        PushButton{
-            parent=main_page, x=2, y=y_start,
-            min_width=22, text="Import Legacy Config",
-            callback=function() tool_ctl.load_legacy() end,
-            fg_bg=cpair(colors.black, colors.cyan),
-            active_fg_bg=btn_act_fg_bg
-        }
-        y_start = y_start + 2
-    end
-
-    PushButton{parent=main_page,x=2,y=y_start,min_width=18,text="Configure HUD",callback=function()main_pane.set_value(2)end,fg_bg=cpair(colors.black,colors.blue),active_fg_bg=btn_act_fg_bg}
-
-    tool_ctl.view_cfg = PushButton{parent=main_page,x=2,y=y_start+2,min_width=20,text="View Configuration",callback=view_config,fg_bg=cpair(colors.black,colors.blue),active_fg_bg=btn_act_fg_bg,dis_fg_bg=btn_dis_fg_bg}
+    tool_ctl.view_cfg = add_button("View Configuration", {
+        min_width=20,
+        callback=view_config,
+        fg_bg=cpair(colors.black, colors.blue),
+        active_fg_bg=btn_act_fg_bg,
+        dis_fg_bg=btn_dis_fg_bg
+    })
 
     if not tool_ctl.has_config then tool_ctl.view_cfg.disable() end
+
+    add_button("Change Log", {
+        min_width=12,
+        callback=function() main_pane.set_value(7) end,
+        fg_bg=nav_fg_bg,
+        active_fg_bg=btn_act_fg_bg
+    })
+
+    add_blank()
 
     local function startup()
         tool_ctl.launch_startup = true
         exit()
     end
 
-    PushButton{parent=main_page,x=2,y=y_start+4,min_width=12,text="Change Log",callback=function()main_pane.set_value(7)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-
     if tool_ctl.ask_config then
-        PushButton{parent=main_page,x=2,y=18,min_width=6,text="Exit",callback=exit,dis_fg_bg=btn_dis_fg_bg}.disable()
-        PushButton{parent=main_page,x=18,y=18,min_width=8,text="Resume",callback=exit,fg_bg=cpair(colors.black,colors.lightBlue),active_fg_bg=btn_act_fg_bg}
+        add_button("Exit", {
+            min_width=6,
+            callback=exit,
+            dis_fg_bg=btn_dis_fg_bg
+        }).disable()
+
+        add_button("Resume", {
+            min_width=8,
+            callback=exit,
+            fg_bg=cpair(colors.black, colors.lightBlue),
+            active_fg_bg=btn_act_fg_bg
+        })
     else
-        PushButton{parent=main_page,x=2,y=18,min_width=6,text="Exit",callback=exit,fg_bg=cpair(colors.black,colors.red),active_fg_bg=btn_act_fg_bg}
-        PushButton{parent=main_page,x=17,y=18,min_width=9,text="Startup",callback=startup,fg_bg=cpair(colors.black,colors.green),active_fg_bg=btn_act_fg_bg,dis_fg_bg=btn_dis_fg_bg}
+        add_button("Exit", {
+            min_width=6,
+            callback=exit,
+            fg_bg=cpair(colors.black, colors.red),
+            active_fg_bg=btn_act_fg_bg
+        })
+
+        add_button("Startup", {
+            min_width=9,
+            callback=startup,
+            fg_bg=cpair(colors.black, colors.green),
+            active_fg_bg=btn_act_fg_bg,
+            dis_fg_bg=btn_dis_fg_bg
+        })
     end
-
-    --#endregion
-
-    --#region Disk Space Warning
-
-    TextBox{parent=disk_warn,y=2,text=" Insufficient Disk Space",fg_bg=cpair(colors.white,colors.black)}
-
-    local disk_page = Div{parent=disk_warn,x=2,y=4,width=24}
-
-    local function delete_log()
-        fs.delete(ini_cfg.LogPath)
-
-        local space = fs.getFreeSpace("/")
-        tool_ctl.dw_free_space.set_value(space.." bytes free")
-
-        if not fs.exists(ini_cfg.LogPath) then
-            tool_ctl.dw_log_size.set_value("0 byte log file")
-            tool_ctl.dw_del_log_btn.disable()
-        end
-
-        if space >= req_space then tool_ctl.dw_continue.enable() end
-    end
-
-    TextBox{parent=disk_page,height=5,text="There is not enough space to safely configure. Saving the configuration may fail."}
-
-    tool_ctl.dw_free_space = TextBox{parent=disk_page,height=1,text=fs.getFreeSpace("/").." bytes free",fg_bg=cpair(colors.gray,colors._INHERIT)}
-    TextBox{parent=disk_page,height=1,text=req_space.." bytes required",fg_bg=cpair(colors.gray,colors._INHERIT)}
-
-    if fs.exists(ini_cfg.LogPath) then
-        tool_ctl.dw_log_size = TextBox{parent=disk_page,y=8,height=1,text=fs.getSize(ini_cfg.LogPath).." byte log file",fg_bg=cpair(colors.gray,colors._INHERIT)}
-
-        TextBox{parent=disk_page,y=10,height=2,text="You may delete the log file to free up space."}
-        tool_ctl.dw_del_log_btn = PushButton{parent=disk_page,y=13,min_width=17,text="Delete Log File",callback=delete_log,fg_bg=cpair(colors.black,colors.orange),active_fg_bg=btn_act_fg_bg,dis_fg_bg=btn_dis_fg_bg}
-    else
-        TextBox{parent=disk_page,y=9,height=5,text="The log file wasn't found, so you'll need to manually make space."}
-    end
-
-    PushButton{parent=disk_page,y=15,min_width=6,text="Exit",callback=exit,fg_bg=cpair(colors.black,colors.red),active_fg_bg=btn_act_fg_bg}
-    tool_ctl.dw_continue = PushButton{parent=disk_page,x=15,y=15,min_width=10,text="Continue",callback=function()main_pane.set_value(1)end,fg_bg=cpair(colors.black,colors.lightBlue),active_fg_bg=btn_act_fg_bg,dis_fg_bg=btn_dis_fg_bg}
-    tool_ctl.dw_continue.disable()
 
     --#endregion
 
     --#region System Configuration
 
-    -- NOTE: renamed local to cfg_sys to avoid shadowing the CC `settings` global
     local cfg_sys = { settings_cfg, ini_cfg, tmp_cfg, fields, load_settings }
     local divs    = { ui_cfg, net_cfg, hud_cfg, log_cfg, summary }
 
@@ -256,11 +279,21 @@ local function config_view(display)
 
     --#region Config Change Log
 
-    local cl = Div{parent=changelog,x=2,y=4,width=24}
+    local cl = Div{parent=changelog,x=2,y=2,width=24}
 
-    TextBox{parent=changelog,y=2,text=" Config Change Log",fg_bg=bw_fg_bg}
+    TextBox{parent=changelog,y=1,text=" Config Change Log",fg_bg=bw_fg_bg}
 
-    local c_log = ListBox{parent=cl,y=1,height=13,width=24,scroll_height=100,fg_bg=bw_fg_bg,nav_fg_bg=g_lg_fg_bg,nav_active=cpair(colors.black,colors.gray)}
+    local c_log_h = math.max(3, main_h - 2)
+
+    local c_log = ListBox{
+        parent=cl, y=1,
+        height=c_log_h,
+        width=24,
+        scroll_height=100,
+        fg_bg=bw_fg_bg,
+        nav_fg_bg=g_lg_fg_bg,
+        nav_active=cpair(colors.black, colors.gray)
+    }
 
     for _, change in ipairs(changes) do
         TextBox{parent=c_log,text=change[1],fg_bg=bw_fg_bg}
@@ -271,12 +304,17 @@ local function config_view(display)
         end
     end
 
-    PushButton{parent=cl,y=15,text="\x1b Back",callback=function()main_pane.set_value(1)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    PushButton{
+        parent=c_log,
+        text="\x1b Back",
+        callback=function() main_pane.set_value(1) end,
+        fg_bg=nav_fg_bg,
+        active_fg_bg=btn_act_fg_bg
+    }
 
     --#endregion
 end
 
--- reset terminal screen
 local function reset_term()
     term.setTextColor(colors.white)
     term.setBackgroundColor(colors.black)
@@ -284,7 +322,6 @@ local function reset_term()
     term.setCursorPos(1, 1)
 end
 
--- run the smart glasses configurator
 ---@param ask_config? boolean
 function configurator.configure(ask_config)
     tool_ctl.ask_config = ask_config == true
@@ -294,7 +331,6 @@ function configurator.configure(ask_config)
 
     reset_term()
 
-    -- set overridden colors
     for i = 1, #style.colors do
         term.setPaletteColor(style.colors[i].c, style.colors[i].hex)
     end
@@ -320,7 +356,6 @@ function configurator.configure(ask_config)
         end
     end)
 
-    -- restore colors
     for i = 1, #style.colors do
         local r, g, b = term.nativePaletteColor(style.colors[i].c)
         term.setPaletteColor(style.colors[i].c, r, g, b)

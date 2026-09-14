@@ -23,20 +23,17 @@ local tri = util.trinary
 
 local cpair = core.cpair
 
-local RIGHT = core.ALIGN.RIGHT
-
 local self = {
     importing_legacy = false,
 
-    show_auth_key = nil,    ---@type function
-    show_key_btn = nil,     ---@type PushButton
-    auth_key_textbox = nil, ---@type TextBox
+    show_auth_key = nil,
+    show_key_btn = nil,
+    auth_key_textbox = nil,
     auth_key_value = ""
 }
 
 local system = {}
 
--- create the system configuration view
 ---@param tool_ctl _gld_cfg_tool_ctl
 ---@param main_pane MultiPane
 ---@param cfg_sys [ glasses_config, glasses_config, glasses_config, { [1]: string, [2]: string, [3]: any }[], function ]
@@ -54,26 +51,56 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
     local btn_act_fg_bg = style.btn_act_fg_bg
     local btn_dis_fg_bg = style.btn_dis_fg_bg
 
-    --#region HUD UI (unit ID, scale, hotkeys)
+    local _, term_h = term.getSize()
+    local page_h = math.max(4, term_h - 3)
+    local term_w = ({term.getSize()})[1]
 
-    local ui_c_1 = Div{parent=ui_cfg,x=2,y=4,width=24}
-    local ui_c_2 = Div{parent=ui_cfg,x=2,y=4,width=24}
+    local function make_list(parent)
+        return ListBox{
+            parent = parent,
+            y = 1, x = 1,
+            height = page_h,
+            width = term_w,
+            scroll_height = 64,
+            fg_bg = style.root,
+            nav_fg_bg = g_lg_fg_bg,
+            nav_active = cpair(colors.black, colors.gray),
+        }
+    end
 
-    local ui_pane = MultiPane{parent=ui_cfg,y=4,panes={ui_c_1,ui_c_2}}
+    local function add_text(list, text, fg_bg)
+        TextBox{ parent=list, text=text, fg_bg=fg_bg or style.root }
+    end
 
-    TextBox{parent=ui_cfg,y=2,text=" HUD Display",fg_bg=cpair(colors.black,colors.lime)}
+    local function add_blank(list)
+        TextBox{ parent=list, text="", fg_bg=style.root }
+    end
 
-    TextBox{parent=ui_c_1,y=1,height=3,text="Choose which reactor unit to display."}
+    local function add_button(list, text, opts)
+        opts.parent = list
+        opts.text = text
+        return PushButton(opts)
+    end
 
-    TextBox{parent=ui_c_1,y=4,text="Reactor Unit ID"}
+    --#region HUD UI
+
+    local ui_c_1 = make_list(Div{parent=ui_cfg,x=2,y=2,width=term_w - 4})
+    local ui_c_2 = make_list(Div{parent=ui_cfg,x=2,y=2,width=term_w - 4})
+
+    local ui_pane = MultiPane{parent=ui_cfg,y=2,panes={ui_c_1,ui_c_2}}
+
+    TextBox{parent=ui_cfg,y=1,text=" HUD Display",fg_bg=cpair(colors.black,colors.lime)}
+
+    add_text(ui_c_1, "Choose which reactor unit to display.", style.root)
+    add_blank(ui_c_1)
+    add_text(ui_c_1, "Reactor Unit ID", style.root)
     local unit_id = NumberField{parent=ui_c_1,y=5,width=7,default=ini_cfg.UnitID,min=1,max=64,fg_bg=bw_fg_bg}
+    add_blank(ui_c_1)
+    add_text(ui_c_1, "HUD Scale (0.5 - 2.0)", style.root)
+    local hud_scale = NumberField{parent=ui_c_1,y=8,width=7,default=ini_cfg.HUDScale,min=0.5,max=2.0,max_chars=6,max_frac_digits=2,allow_decimal=true,fg_bg=bw_fg_bg}
+    add_blank(ui_c_1)
 
-    TextBox{parent=ui_c_1,y=8,text="HUD Scale"}
-    local hud_scale = NumberField{parent=ui_c_1,y=9,width=7,default=ini_cfg.HUDScale,min=0.5,max=2.0,max_chars=6,max_frac_digits=2,allow_decimal=true,fg_bg=bw_fg_bg}
-
-    TextBox{parent=ui_c_1,x=9,y=9,height=2,text="(0.5 - 2.0)\n(default 1.0)",fg_bg=g_lg_fg_bg}
-
-    local uis_err = TextBox{parent=ui_c_1,y=14,width=24,text="Please set unit ID and scale.",fg_bg=cpair(colors.red,colors.lightGray),hidden=true}
+    local uis_err = TextBox{ parent=ui_c_1, text="", fg_bg=cpair(colors.red,colors.lightGray), hidden=true }
 
     local function submit_hud_opts()
         local u = tonumber(unit_id.get_value())
@@ -83,21 +110,24 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             tmp_cfg.HUDScale = s
             ui_pane.set_value(2)
             uis_err.hide(true)
-        else uis_err.show() end
+        else
+            uis_err.set_value("Please set unit ID and scale.")
+            uis_err.show()
+        end
     end
 
-    PushButton{parent=ui_c_1,y=15,text="\x1b Back",callback=function()main_pane.set_value(1)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=ui_c_1,x=19,y=15,text="Next \x1a",callback=submit_hud_opts,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(ui_c_1, "\x1b Back", { callback=function() main_pane.set_value(1) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(ui_c_1, "Next \x1a", { callback=submit_hud_opts, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
-    TextBox{parent=ui_c_2,y=1,height=3,text="Optionally bind hotkeys for emergency SCRAM/START. Both target only the Unit ID above."}
-
-    TextBox{parent=ui_c_2,y=5,text="SCRAM Hotkey"}
+    add_text(ui_c_2, "Optionally bind hotkeys for SCRAM/START.", style.root)
+    add_text(ui_c_2, "Both target only the Unit ID above.", style.root)
+    add_blank(ui_c_2)
+    add_text(ui_c_2, "SCRAM Hotkey (empty = off)", style.root)
     local scram_key = TextField{parent=ui_c_2,y=6,width=24,height=1,value=ini_cfg.HotkeyScram or "",max_len=64,fg_bg=bw_fg_bg}
-    TextBox{parent=ui_c_2,x=3,y=7,height=2,text="e.g. key.hotkeyperipheral.1\n(empty = disabled)",fg_bg=g_lg_fg_bg}
-
-    TextBox{parent=ui_c_2,y=10,text="START Hotkey"}
-    local start_key = TextField{parent=ui_c_2,y=11,width=24,height=1,value=ini_cfg.HotkeyStart or "",max_len=64,fg_bg=bw_fg_bg}
-    TextBox{parent=ui_c_2,x=3,y=12,height=2,text="(empty = disabled)",fg_bg=g_lg_fg_bg}
+    add_blank(ui_c_2)
+    add_text(ui_c_2, "START Hotkey (empty = off)", style.root)
+    local start_key = TextField{parent=ui_c_2,y=9,width=24,height=1,value=ini_cfg.HotkeyStart or "",max_len=64,fg_bg=bw_fg_bg}
+    add_blank(ui_c_2)
 
     local function submit_hud_hotkeys()
         tmp_cfg.HotkeyScram = scram_key.get_value()
@@ -105,34 +135,35 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
         main_pane.set_value(3)
     end
 
-    PushButton{parent=ui_c_2,y=15,text="\x1b Back",callback=function()ui_pane.set_value(1)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=ui_c_2,x=19,y=15,text="Next \x1a",callback=submit_hud_hotkeys,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(ui_c_2, "\x1b Back", { callback=function() ui_pane.set_value(1) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(ui_c_2, "Next \x1a", { callback=submit_hud_hotkeys, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
     --#endregion
 
     --#region Network
 
-    local net_c_1 = Div{parent=net_cfg,x=2,y=4,width=24}
-    local net_c_2 = Div{parent=net_cfg,x=2,y=4,width=24}
-    local net_c_3 = Div{parent=net_cfg,x=2,y=4,width=24}
-    local net_c_4 = Div{parent=net_cfg,x=2,y=4,width=24}
+    local net_c_1 = make_list(Div{parent=net_cfg,x=2,y=2,width=term_w - 4})
+    local net_c_2 = make_list(Div{parent=net_cfg,x=2,y=2,width=term_w - 4})
+    local net_c_3 = make_list(Div{parent=net_cfg,x=2,y=2,width=term_w - 4})
+    local net_c_4 = make_list(Div{parent=net_cfg,x=2,y=2,width=term_w - 4})
 
-    local net_pane = MultiPane{parent=net_cfg,y=4,panes={net_c_1,net_c_2,net_c_3,net_c_4}}
+    local net_pane = MultiPane{parent=net_cfg,y=2,panes={net_c_1,net_c_2,net_c_3,net_c_4}}
 
-    TextBox{parent=net_cfg,y=2,text=" Network Configuration",fg_bg=cpair(colors.black,colors.lightBlue)}
+    TextBox{parent=net_cfg,y=1,text=" Network Configuration",fg_bg=cpair(colors.black,colors.lightBlue)}
 
-    TextBox{parent=net_c_1,y=1,text="Set network channels."}
-    TextBox{parent=net_c_1,y=3,height=4,text="The coordinator channel must match your facility. The HUD channel must not collide with another device.",fg_bg=g_lg_fg_bg}
+    add_text(net_c_1, "Set network channels.", style.root)
+    add_blank(net_c_1)
+    add_text(net_c_1, "CRD must match your facility.", g_lg_fg_bg)
+    add_text(net_c_1, "PKT must not collide.", g_lg_fg_bg)
+    add_blank(net_c_1)
+    add_text(net_c_1, "Coordinator Channel", style.root)
+    local crd_chan = NumberField{parent=net_c_1,y=7,width=7,default=ini_cfg.CRD_Channel,min=1,max=65535,fg_bg=bw_fg_bg}
+    add_blank(net_c_1)
+    add_text(net_c_1, "HUD Packet Channel", style.root)
+    local pkt_chan = NumberField{parent=net_c_1,y=10,width=7,default=ini_cfg.PKT_Channel,min=1,max=65535,fg_bg=bw_fg_bg}
+    add_blank(net_c_1)
 
-    TextBox{parent=net_c_1,y=8,width=18,text="Coordinator Channel"}
-    local crd_chan = NumberField{parent=net_c_1,y=9,width=7,default=ini_cfg.CRD_Channel,min=1,max=65535,fg_bg=bw_fg_bg}
-    TextBox{parent=net_c_1,x=9,y=9,height=4,text="[CRD_CHANNEL]",fg_bg=g_lg_fg_bg}
-
-    TextBox{parent=net_c_1,y=10,width=18,text="HUD Packet Channel"}
-    local pkt_chan = NumberField{parent=net_c_1,y=11,width=7,default=ini_cfg.PKT_Channel,min=1,max=65535,fg_bg=bw_fg_bg}
-    TextBox{parent=net_c_1,x=9,y=11,height=4,text="[PKT_CHANNEL]",fg_bg=g_lg_fg_bg}
-
-    local chan_err = TextBox{parent=net_c_1,y=14,width=24,text="Please set all channels.",fg_bg=cpair(colors.red,colors.lightGray),hidden=true}
+    local chan_err = TextBox{ parent=net_c_1, text="", fg_bg=cpair(colors.red,colors.lightGray), hidden=true }
 
     local function submit_channels()
         local crd_c, pkt_c = tonumber(crd_chan.get_value()), tonumber(pkt_chan.get_value())
@@ -140,21 +171,25 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             tmp_cfg.CRD_Channel, tmp_cfg.PKT_Channel = crd_c, pkt_c
             net_pane.set_value(2)
             chan_err.hide(true)
-        else chan_err.show() end
+        else
+            chan_err.set_value("Please set all channels.")
+            chan_err.show()
+        end
     end
 
-    PushButton{parent=net_c_1,y=15,text="\x1b Back",callback=function()main_pane.set_value(2)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=net_c_1,x=19,y=15,text="Next \x1a",callback=submit_channels,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(net_c_1, "\x1b Back", { callback=function() main_pane.set_value(2) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(net_c_1, "Next \x1a", { callback=submit_channels, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
-    TextBox{parent=net_c_2,y=1,text="Set connection timeout."}
-    TextBox{parent=net_c_2,y=3,height=7,text="You generally should not need to modify this. On slow servers, you can try to increase this to make the HUD wait longer before assuming a disconnection.",fg_bg=g_lg_fg_bg}
+    add_text(net_c_2, "Set connection timeout.", style.root)
+    add_blank(net_c_2)
+    add_text(net_c_2, "Increase on slow servers so the HUD", g_lg_fg_bg)
+    add_text(net_c_2, "waits longer before unlinking.", g_lg_fg_bg)
+    add_blank(net_c_2)
+    add_text(net_c_2, "Connection Timeout (seconds)", style.root)
+    local timeout = NumberField{parent=net_c_2,y=8,width=7,default=ini_cfg.ConnTimeout,min=2,max=25,max_chars=6,max_frac_digits=2,allow_decimal=true,fg_bg=bw_fg_bg}
+    add_blank(net_c_2)
 
-    TextBox{parent=net_c_2,y=11,width=19,text="Connection Timeout"}
-    local timeout = NumberField{parent=net_c_2,y=12,width=7,default=ini_cfg.ConnTimeout,min=2,max=25,max_chars=6,max_frac_digits=2,allow_decimal=true,fg_bg=bw_fg_bg}
-
-    TextBox{parent=net_c_2,x=9,y=12,height=2,text="seconds\n(default 5)",fg_bg=g_lg_fg_bg}
-
-    local ct_err = TextBox{parent=net_c_2,y=14,width=24,text="Please set timeout.",fg_bg=cpair(colors.red,colors.lightGray),hidden=true}
+    local ct_err = TextBox{ parent=net_c_2, text="", fg_bg=cpair(colors.red,colors.lightGray), hidden=true }
 
     local function submit_timeouts()
         local timeout_val = tonumber(timeout.get_value())
@@ -162,19 +197,25 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             tmp_cfg.ConnTimeout = timeout_val
             net_pane.set_value(3)
             ct_err.hide(true)
-        else ct_err.show() end
+        else
+            ct_err.set_value("Please set timeout.")
+            ct_err.show()
+        end
     end
 
-    PushButton{parent=net_c_2,y=15,text="\x1b Back",callback=function()net_pane.set_value(1)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=net_c_2,x=19,y=15,text="Next \x1a",callback=submit_timeouts,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(net_c_2, "\x1b Back", { callback=function() net_pane.set_value(1) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(net_c_2, "Next \x1a", { callback=submit_timeouts, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
-    TextBox{parent=net_c_3,y=1,text="Set the trusted range."}
-    TextBox{parent=net_c_3,y=3,height=4,text="Setting this to a value larger than 0 prevents connections with devices that many blocks away.",fg_bg=g_lg_fg_bg}
-    TextBox{parent=net_c_3,y=8,height=4,text="This is optional. You can disable this functionality by setting the value to 0.",fg_bg=g_lg_fg_bg}
+    add_text(net_c_3, "Set the trusted range.", style.root)
+    add_blank(net_c_3)
+    add_text(net_c_3, "Range > 0 prevents connections", g_lg_fg_bg)
+    add_text(net_c_3, "with devices that many blocks away.", g_lg_fg_bg)
+    add_blank(net_c_3)
+    add_text(net_c_3, "Trusted Range (0 = no limit)", style.root)
+    local range = NumberField{parent=net_c_3,y=8,width=10,default=ini_cfg.TrustedRange,min=0,max_chars=20,allow_decimal=true,fg_bg=bw_fg_bg}
+    add_blank(net_c_3)
 
-    local range = NumberField{parent=net_c_3,y=13,width=10,default=ini_cfg.TrustedRange,min=0,max_chars=20,allow_decimal=true,fg_bg=bw_fg_bg}
-
-    local tr_err = TextBox{parent=net_c_3,y=14,width=24,text="Set the trusted range.",fg_bg=cpair(colors.red,colors.lightGray),hidden=true}
+    local tr_err = TextBox{ parent=net_c_3, text="", fg_bg=cpair(colors.red,colors.lightGray), hidden=true }
 
     local function submit_tr()
         local range_val = tonumber(range.get_value())
@@ -182,28 +223,32 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             tmp_cfg.TrustedRange = range_val
             net_pane.set_value(4)
             tr_err.hide(true)
-        else tr_err.show() end
+        else
+            tr_err.set_value("Set the trusted range.")
+            tr_err.show()
+        end
     end
 
-    PushButton{parent=net_c_3,y=15,text="\x1b Back",callback=function()net_pane.set_value(2)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=net_c_3,x=19,y=15,text="Next \x1a",callback=submit_tr,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(net_c_3, "\x1b Back", { callback=function() net_pane.set_value(2) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(net_c_3, "Next \x1a", { callback=submit_tr, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
-    TextBox{parent=net_c_4,y=1,height=4,text="Optionally, set the facility authentication key. Do NOT use one of your passwords."}
-    TextBox{parent=net_c_4,y=6,height=6,text="This must match the supervisor and coordinator AuthKey. It is intended for security on multiplayer servers.",fg_bg=g_lg_fg_bg}
-
-    TextBox{parent=net_c_4,y=12,text="Facility Auth Key"}
-    local key, _ = TextField{parent=net_c_4,y=13,max_len=64,value=ini_cfg.AuthKey,width=24,height=1,fg_bg=bw_fg_bg}
+    add_text(net_c_4, "Optionally, set the facility authentication", style.root)
+    add_text(net_c_4, "key. Do NOT use one of your passwords.", style.root)
+    add_blank(net_c_4)
+    add_text(net_c_4, "Must match the supervisor/coordinator AuthKey.", g_lg_fg_bg)
+    add_blank(net_c_4)
+    add_text(net_c_4, "Facility Auth Key", style.root)
+    local key = TextField{parent=net_c_4,y=9,max_len=64,value=ini_cfg.AuthKey,width=24,height=1,fg_bg=bw_fg_bg}
 
     local function censor_key(enable) key.censor(tri(enable, "*", nil)) end
 
-    PushButton{parent=net_c_4,y=15,text="\x1b Back",callback=function()net_pane.set_value(3)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-
-    local hide_key = Checkbox{parent=net_c_4,x=8,y=15,label="Hide Key",box_fg_bg=cpair(colors.lightBlue,colors.black),callback=censor_key}
-
+    local hide_key = Checkbox{parent=net_c_4,x=14,y=9,label="Hide",box_fg_bg=cpair(colors.lightBlue,colors.black),callback=censor_key}
     hide_key.set_value(true)
     censor_key(true)
 
-    local key_err = TextBox{parent=net_c_4,y=14,width=24,text="Length must be > 7.",fg_bg=cpair(colors.red,colors.lightGray),hidden=true}
+    add_blank(net_c_4)
+
+    local key_err = TextBox{ parent=net_c_4, text="", fg_bg=cpair(colors.red,colors.lightGray), hidden=true }
 
     local function submit_auth()
         local v = key.get_value()
@@ -211,44 +256,50 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             tmp_cfg.AuthKey = key.get_value()
             main_pane.set_value(4)
             key_err.hide(true)
-        else key_err.show() end
+        else
+            key_err.set_value("Length must be > 7.")
+            key_err.show()
+        end
     end
 
-    PushButton{parent=net_c_4,x=19,y=15,text="Next \x1a",callback=submit_auth,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(net_c_4, "\x1b Back", { callback=function() net_pane.set_value(3) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(net_c_4, "Next \x1a", { callback=submit_auth, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
     --#endregion
 
-    --#region HUD behavior page (placeholder)
+    --#region HUD behavior (placeholder)
 
-    local hud_c_1 = Div{parent=hud_cfg,x=2,y=4,width=24}
+    local hud_c_1 = make_list(Div{parent=hud_cfg,x=2,y=2,width=term_w - 4})
 
-    TextBox{parent=hud_cfg,y=2,text=" HUD Behavior",fg_bg=cpair(colors.black,colors.orange)}
+    TextBox{parent=hud_cfg,y=1,text=" HUD Behavior",fg_bg=cpair(colors.black,colors.orange)}
 
-    TextBox{parent=hud_c_1,y=1,height=3,text="Reserved for future HUD behavior options. Nothing to configure here yet."}
+    add_text(hud_c_1, "Reserved for future HUD behavior options.", style.root)
+    add_text(hud_c_1, "Nothing to configure here yet.", style.root)
+    add_blank(hud_c_1)
 
-    PushButton{parent=hud_c_1,y=15,text="\x1b Back",callback=function()main_pane.set_value(3)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=hud_c_1,x=19,y=15,text="Next \x1a",callback=function()main_pane.set_value(5)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(hud_c_1, "\x1b Back", { callback=function() main_pane.set_value(3) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(hud_c_1, "Next \x1a", { callback=function() main_pane.set_value(5) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
     --#endregion
 
     --#region Logging
 
-    local log_c_1 = Div{parent=log_cfg,x=2,y=4,width=24}
+    local log_c_1 = make_list(Div{parent=log_cfg,x=2,y=2,width=term_w - 4})
 
-    TextBox{parent=log_cfg,y=2,text=" Logging Configuration",fg_bg=cpair(colors.black,colors.pink)}
+    TextBox{parent=log_cfg,y=1,text=" Logging Configuration",fg_bg=cpair(colors.black,colors.pink)}
 
-    TextBox{parent=log_c_1,y=1,text="Configure logging below."}
-
-    TextBox{parent=log_c_1,y=3,text="Log File Mode"}
-    local mode = RadioButton{parent=log_c_1,y=4,default=ini_cfg.LogMode+1,options={"Append on Startup","Replace on Startup"},radio_colors=cpair(colors.lightGray,colors.black),select_color=colors.pink}
-
-    TextBox{parent=log_c_1,y=7,text="Log File Path"}
+    add_text(log_c_1, "Configure logging below.", style.root)
+    add_blank(log_c_1)
+    add_text(log_c_1, "Log File Mode", style.root)
+    local mode = RadioButton{parent=log_c_1,y=5,default=ini_cfg.LogMode+1,options={"Append on Startup","Replace on Startup"},radio_colors=cpair(colors.lightGray,colors.black),select_color=colors.pink}
+    add_blank(log_c_1)
+    add_text(log_c_1, "Log File Path", style.root)
     local path = TextField{parent=log_c_1,y=8,width=24,height=1,value=ini_cfg.LogPath,max_len=128,fg_bg=bw_fg_bg}
+    add_blank(log_c_1)
+    local en_dbg = Checkbox{parent=log_c_1,y=11,default=ini_cfg.LogDebug,label="Enable Debug Messages",box_fg_bg=cpair(colors.pink,colors.black)}
+    add_blank(log_c_1)
 
-    local en_dbg = Checkbox{parent=log_c_1,y=10,default=ini_cfg.LogDebug,label="Enable Debug Messages",box_fg_bg=cpair(colors.pink,colors.black)}
-    TextBox{parent=log_c_1,x=3,y=11,height=4,text="This results in much larger log files. Use only as needed.",fg_bg=g_lg_fg_bg}
-
-    local path_err = TextBox{parent=log_c_1,y=14,width=24,text="Provide a log file path.",fg_bg=cpair(colors.red,colors.lightGray),hidden=true}
+    local path_err = TextBox{ parent=log_c_1, text="", fg_bg=cpair(colors.red,colors.lightGray), hidden=true }
 
     local function submit_log()
         if path.get_value() ~= "" then
@@ -261,26 +312,38 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             self.importing_legacy = false
             tool_ctl.settings_apply.show()
             main_pane.set_value(6)
-        else path_err.show() end
+        else
+            path_err.set_value("Provide a log file path.")
+            path_err.show()
+        end
     end
 
-    PushButton{parent=log_c_1,y=15,text="\x1b Back",callback=function()main_pane.set_value(4)end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=log_c_1,x=19,y=15,text="Next \x1a",callback=submit_log,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(log_c_1, "\x1b Back", { callback=function() main_pane.set_value(4) end, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(log_c_1, "Next \x1a", { callback=submit_log, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
     --#endregion
 
-    --#region Summary and Saving
+    --#region Summary
 
-    local sum_c_1 = Div{parent=summary,x=2,y=4,width=24}
-    local sum_c_2 = Div{parent=summary,x=2,y=4,width=24}
-    local sum_c_3 = Div{parent=summary,x=2,y=4,width=24}
-    local sum_c_4 = Div{parent=summary,x=2,y=4,width=24}
+    local sum_c_1 = make_list(Div{parent=summary,x=2,y=2,width=term_w - 4})
+    local sum_c_2 = make_list(Div{parent=summary,x=2,y=2,width=term_w - 4})
+    local sum_c_3 = make_list(Div{parent=summary,x=2,y=2,width=term_w - 4})
+    local sum_c_4 = make_list(Div{parent=summary,x=2,y=2,width=term_w - 4})
 
-    local sum_pane = MultiPane{parent=summary,y=4,panes={sum_c_1,sum_c_2,sum_c_3,sum_c_4}}
+    local sum_pane = MultiPane{parent=summary,y=2,panes={sum_c_1,sum_c_2,sum_c_3,sum_c_4}}
 
-    TextBox{parent=summary,y=2,text=" Summary",fg_bg=cpair(colors.black,colors.green)}
+    TextBox{parent=summary,y=1,text=" Summary",fg_bg=cpair(colors.black,colors.green)}
 
-    local setting_list = ListBox{parent=sum_c_1,y=1,height=11,width=24,scroll_height=100,fg_bg=bw_fg_bg,nav_fg_bg=g_lg_fg_bg,nav_active=cpair(colors.black,colors.gray)}
+    local setting_list = ListBox{
+        parent = sum_c_1,
+        y = 1,
+        height = math.max(4, page_h - 5),
+        width = 24,
+        scroll_height = 100,
+        fg_bg = bw_fg_bg,
+        nav_fg_bg = g_lg_fg_bg,
+        nav_active = cpair(colors.black, colors.gray),
+    }
 
     local function back_from_summary()
         if tool_ctl.viewing_config or self.importing_legacy then
@@ -293,8 +356,6 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
         end
     end
 
-    ---@param element graphics_element
-    ---@param data any
     local function try_set(element, data)
         if data ~= nil then element.set_value(data) end
     end
@@ -322,7 +383,7 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             try_set(path, ini_cfg.LogPath)
             try_set(en_dbg, ini_cfg.LogDebug)
 
-            tool_ctl.view_cfg.enable()
+            if tool_ctl.view_cfg then tool_ctl.view_cfg.enable() end
 
             if self.importing_legacy then
                 self.importing_legacy = false
@@ -335,11 +396,26 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
         end
     end
 
-    PushButton{parent=sum_c_1,y=15,text="\x1b Back",callback=back_from_summary,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    self.show_key_btn = PushButton{parent=sum_c_1,y=13,min_width=17,text="Unhide Auth Key",callback=function()self.show_auth_key()end,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg,dis_fg_bg=btn_dis_fg_bg}
-    tool_ctl.settings_apply = PushButton{parent=sum_c_1,x=18,y=15,min_width=7,text="Apply",callback=save_and_continue,fg_bg=cpair(colors.black,colors.green),active_fg_bg=btn_act_fg_bg}
+    self.show_key_btn = add_button(sum_c_1, "Unhide Auth Key", {
+        min_width=17,
+        callback=function() self.show_auth_key() end,
+        fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg, dis_fg_bg=btn_dis_fg_bg
+    })
 
-    TextBox{parent=sum_c_2,y=1,text="Settings saved!"}
+    add_button(sum_c_1, "\x1b Back", {
+        callback=back_from_summary,
+        fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg
+    })
+
+    tool_ctl.settings_apply = add_button(sum_c_1, "Apply", {
+        min_width=7,
+        callback=save_and_continue,
+        fg_bg=cpair(colors.black,colors.green),
+        active_fg_bg=btn_act_fg_bg
+    })
+
+    add_text(sum_c_2, "Settings saved!", style.root)
+    add_blank(sum_c_2)
 
     local function go_home()
         main_pane.set_value(1)
@@ -347,33 +423,39 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
         sum_pane.set_value(1)
     end
 
-    PushButton{parent=sum_c_2,y=15,min_width=6,text="Home",callback=go_home,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
+    add_button(sum_c_2, "Home", { min_width=6, callback=go_home, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
 
     if tool_ctl.ask_config then
-        PushButton{parent=sum_c_2,x=17,y=15,min_width=8,text="Resume",callback=exit,fg_bg=cpair(colors.black,colors.lightBlue),active_fg_bg=btn_act_fg_bg}
+        add_button(sum_c_2, "Resume", { min_width=8, callback=exit, fg_bg=cpair(colors.black,colors.lightBlue), active_fg_bg=btn_act_fg_bg })
     else
-        PushButton{parent=sum_c_2,x=16,y=15,min_width=9,text="Startup",callback=startup,fg_bg=cpair(colors.black,colors.green),active_fg_bg=btn_act_fg_bg}
+        add_button(sum_c_2, "Startup", { min_width=9, callback=startup, fg_bg=cpair(colors.black,colors.green), active_fg_bg=btn_act_fg_bg })
     end
 
-    TextBox{parent=sum_c_3,y=1,height=4,text="The legacy config file will now be deleted, then the configurator will exit."}
+    add_text(sum_c_3, "The legacy config file will now be deleted,", style.root)
+    add_text(sum_c_3, "then the configurator will exit.", style.root)
+    add_blank(sum_c_3)
 
     local function delete_legacy()
         fs.delete("/smartglasses.legacy")
         exit()
     end
 
-    PushButton{parent=sum_c_3,y=15,min_width=8,text="Cancel",callback=go_home,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=sum_c_3,x=19,y=15,min_width=6,text="OK",callback=delete_legacy,fg_bg=cpair(colors.black,colors.green),active_fg_bg=cpair(colors.white,colors.gray)}
+    add_button(sum_c_3, "Cancel", { min_width=8, callback=go_home, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(sum_c_3, "OK", { min_width=6, callback=delete_legacy, fg_bg=cpair(colors.black,colors.green), active_fg_bg=cpair(colors.white,colors.gray) })
 
-    TextBox{parent=sum_c_4,y=1,height=8,text="Failed to save the settings file.\n\nThere may not be enough space for the modification or server file permissions may be denying writes."}
-    PushButton{parent=sum_c_4,y=15,min_width=6,text="Home",callback=go_home,fg_bg=nav_fg_bg,active_fg_bg=btn_act_fg_bg}
-    PushButton{parent=sum_c_4,x=19,y=15,min_width=6,text="Exit",callback=exit,fg_bg=cpair(colors.black,colors.red),active_fg_bg=cpair(colors.white,colors.gray)}
+    add_text(sum_c_4, "Failed to save the settings file.", style.root)
+    add_blank(sum_c_4)
+    add_text(sum_c_4, "There may not be enough space,", style.root)
+    add_text(sum_c_4, "or file permissions are denying writes.", style.root)
+    add_blank(sum_c_4)
+
+    add_button(sum_c_4, "Home", { min_width=6, callback=go_home, fg_bg=nav_fg_bg, active_fg_bg=btn_act_fg_bg })
+    add_button(sum_c_4, "Exit", { min_width=6, callback=exit, fg_bg=cpair(colors.black,colors.red), active_fg_bg=cpair(colors.white,colors.gray) })
 
     --#endregion
 
     --#region Tool Functions
 
-    -- load a legacy config file
     function tool_ctl.load_legacy()
         if not fs.exists("/smartglasses.legacy") then return end
 
@@ -399,13 +481,11 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
         self.importing_legacy = true
     end
 
-    -- expose the auth key on the summary page
     function self.show_auth_key()
         self.show_key_btn.disable()
         self.auth_key_textbox.set_value(self.auth_key_value)
     end
 
-    -- generate the summary list
     ---@param cfg glasses_config
     function tool_ctl.gen_summary(cfg)
         setting_list.remove_all()
@@ -447,7 +527,7 @@ function system.create(tool_ctl, main_pane, cfg_sys, divs, style, startup, exit)
             if height > 1 then
                 textbox = TextBox{parent=line,y=2,text=val,height=height-1}
             else
-                textbox = TextBox{parent=line,x=label_w+1,y=1,text=val,alignment=RIGHT}
+                textbox = TextBox{parent=line,x=label_w+1,y=1,text=val,alignment=core.ALIGN.RIGHT}
             end
 
             if f[1] == "AuthKey" then self.auth_key_textbox = textbox end

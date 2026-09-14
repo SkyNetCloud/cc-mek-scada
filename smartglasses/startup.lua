@@ -3,7 +3,7 @@
 --
 
 ---@diagnostic disable-next-line: lowercase-global
-smartglasses = smartglasses or periphemu
+smartglasses = smartglasses or periphemu    -- luacheck: ignore smartglasses
 
 local _is_glasses_env = smartglasses
 
@@ -26,9 +26,41 @@ local HUD_VERSION = "1.3.2"
 local println    = util.println
 local println_ts = util.println_ts
 
--- environment check (Smart Glasses only)
+local ERROR_LOG_PATH = "/smartglasses_errors.log"
+
+local function elog(msg)
+    local ok, err = pcall(function ()
+        local f = fs.open(ERROR_LOG_PATH, "a")
+        if f then
+            f.writeLine(string.format("[%s] %s", os.date("%Y-%m-%d %H:%M:%S"), tostring(msg)))
+            f.flush()
+            f.close()
+        end
+    end)
+    if not ok then println("[elog failed] " .. tostring(err)) end
+end
+
+local function elog_error(where, err)
+    elog("========================================")
+    elog("ERROR at " .. where)
+    elog("----------------------------------------")
+    elog(tostring(err))
+    elog("--- traceback ---")
+    elog(debug.traceback("", 2))
+    elog("========================================")
+end
+
 if not _is_glasses_env then
     println("You can only use this application on a computer wearing Smart Glasses.")
+    elog("environment check failed: not running with smartglasses global")
+    return
+end
+
+-- overlay module lives in smartglasses.modules, not as a peripheral
+local overlay_module = smartglasses.modules['advancedperipherals:overlay']
+if overlay_module == nil then
+    println("startup> Advanced Peripherals Overlay Module not equipped")
+    elog("overlay module 'advancedperipherals:overlay' not present in smartglasses.modules")
     return
 end
 
@@ -37,15 +69,17 @@ end
 ----------------------------------------
 
 if not glasses.load_config() then
-    -- try to reconfigure (user action)
     local success, error = configure.configure(true)
-    if success then
-        if not glasses.load_config() then
-            println("failed to load a valid configuration, please reconfigure")
-            return
-        end
-    else
-        println("configuration error: " .. error)
+
+    if not success then
+        elog_error("configure.configure()", error)
+        println("configuration error: " .. tostring(error))
+        return
+    end
+
+    if not glasses.load_config() then
+        elog("failed to load a valid configuration after configure() succeeded")
+        println("failed to load a valid configuration, please reconfigure")
         return
     end
 end
@@ -56,7 +90,11 @@ local config = glasses.config
 -- log init
 ----------------------------------------
 
-log.init(config.LogPath, config.LogMode, config.LogDebug)
+local log_ok, log_err = pcall(log.init, config.LogPath, config.LogMode, config.LogDebug)
+if not log_ok then
+    elog_error("log.init(" .. tostring(config.LogPath) .. ")", log_err)
+    println("log init failed: " .. tostring(log_err))
+end
 
 log.info("========================================")
 log.info("BOOTING smartglasses v" .. HUD_VERSION)
@@ -70,19 +108,9 @@ crash.dbg_log_env()
 ----------------------------------------
 
 local function main()
-    ----------------------------------------
-    -- system startup
-    ----------------------------------------
-
-    -- mount connected devices
     ppm.mount_all()
 
-    -- record version for GUI
     glasses.get_db().version = HUD_VERSION
-
-    ----------------------------------------
-    -- memory allocation
-    ----------------------------------------
 
     ---@class glasses_shared_memory
     local __shared_memory = {
@@ -95,13 +123,13 @@ local function main()
 
         hud_dev = {
             modem = ppm.get_wireless_modem(),
-            overlay = peripheral.find("overlay")
+            overlay = overlay_module,
         },
 
         hud_sys = {
-            nic = nil,           ---@type nic
-            pocket_comms = nil,  ---@type glasses_comms
-            api_wd = nil,        ---@type watchdog
+            nic = nil,
+            pocket_comms = nil,
+            api_wd = nil,
         },
 
         q = {
@@ -113,72 +141,64 @@ local function main()
     local smem_sys   = __shared_memory.hud_sys
     local hud_state  = __shared_memory.hud_state
 
-    ----------------------------------------
-    -- setup system
-    ----------------------------------------
-
-    -- message authentication init
     if type(config.AuthKey) == "string" and string.len(config.AuthKey) > 0 then
-        network.init_mac(config.AuthKey)
+        local mac_ok, mac_err = pcall(network.init_mac, config.AuthKey)
+        if not mac_ok then elog_error("network.init_mac()", mac_err) end
     end
 
     glasses.report_link_state(glasses.LINK_STATE.UNLINKED)
 
-    -- get the communications modem
     if smem_dev.modem == nil then
+        elog("no wireless modem found on startup")
         println("startup> wireless modem not found: please craft the smart glasses with a wireless modem")
         log.fatal("startup> no wireless modem on startup")
         return
     end
 
-    -- get the overlay module
     if smem_dev.overlay == nil then
-        println("startup> Advanced Peripherals Overlay Module not found")
+        elog("no overlay module found on startup")
+        println("startup> Advanced Peripherals Overlay Module not equipped")
         log.fatal("startup> no overlay module on startup")
         return
     end
 
-    -- create connection watchdog (coordinator only)
     smem_sys.api_wd = util.new_watchdog(config.ConnTimeout)
     smem_sys.api_wd.cancel()
     log.debug("startup> conn watchdog created")
 
-    -- create network interface then setup comms
-    smem_sys.nic = network.nic(smem_dev.modem)
-    smem_sys.pocket_comms = glasses.comms(HUD_VERSION, smem_sys.nic, smem_sys.api_wd)
+    local nic_ok, nic_err = pcall(function ()
+        smem_sys.nic = network.nic(smem_dev.modem)
+        smem_sys.pocket_comms = glasses.comms(HUD_VERSION, smem_sys.nic, smem_sys.api_wd)
+    end)
+    if not nic_ok then
+        elog_error("network.nic / glasses.comms init", nic_err)
+        println("comms init failed: " .. tostring(nic_err))
+        return
+    end
     log.debug("startup> comms init")
 
-    -- init I/O control
     glasses.init_core(smem_sys.pocket_comms, config)
 
-    ----------------------------------------
-    -- start the HUD
-    ----------------------------------------
-
     local hud_message
-    hud_state.ui_ok, hud_message = renderer.try_start_hud()
+    hud_state.ui_ok, hud_message = renderer.try_start_hud(smem_dev.overlay)
     if not hud_state.ui_ok then
+        elog_error("renderer.try_start_hud()", hud_message)
         println(util.c("HUD error: ", hud_message))
         log.error(util.c("startup> HUD render failed with error ", hud_message))
     end
 
-    ----------------------------------------
-    -- start system
-    ----------------------------------------
-
     if hud_state.ui_ok then
-        -- init threads
         local main_thread   = threads.thread__main(__shared_memory)
         local render_thread = threads.thread__render(__shared_memory)
 
         log.info("startup> completed")
 
-        -- run threads
         parallel.waitForAll(main_thread.p_exec, render_thread.p_exec)
 
         renderer.close_hud()
 
         if not hud_state.ui_ok then
+            elog("HUD crashed with error: " .. tostring(hud_state.ui_error))
             println(util.c("HUD crashed with error: ", hud_state.ui_error))
         end
     else
@@ -189,8 +209,16 @@ local function main()
     log.info("exited")
 end
 
-if not xpcall(main, crash.handler) then
+local main_ok, main_err = xpcall(main, function (err)
+    pcall(crash.handler, err)
+    elog_error("main() (fatal)", err)
+    return err
+end)
+
+if not main_ok then
     pcall(renderer.close_hud)
+    elog("xpcall(main) returned false; exiting")
+    elog("main_err = " .. tostring(main_err))
     crash.exit()
 else
     log.close()
