@@ -2,7 +2,7 @@
 -- Configuration GUI for Smart Glasses HUD
 --
 
-local log         = require("scada-common.log") 
+local log         = require("scada-common.log")
 local util        = require("scada-common.util")
 
 local system      = require("smartglasses_display.config.system")

@@ -3,6 +3,9 @@
 --
 
 ---@diagnostic disable-next-line: lowercase-global
+smartglasses = smartglasses or periphemu
+
+
 local _is_glasses_env = smartglasses
 
 require("/initenv").init_env()

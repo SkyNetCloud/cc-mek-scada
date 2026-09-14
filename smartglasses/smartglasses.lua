@@ -31,7 +31,6 @@ local io = {
 }
 
 local config = nil     ---@type glasses_config
-local comms_ref = nil  ---@type glasses_comms
 
 ---@class glasses_hud_unit
 local unit_data = {
