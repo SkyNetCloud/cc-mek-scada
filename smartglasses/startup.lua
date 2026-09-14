@@ -16,10 +16,10 @@ local network   = require("scada-common.network")
 local ppm       = require("scada-common.ppm")
 local util      = require("scada-common.util")
 
-local configure = require("smartglasses_display.configure")
-local glasses   = require("smartglasses_display.smartglasses")
-local renderer  = require("smartglasses_display.renderer")
-local threads   = require("smartglasses_display.threads")
+local configure = require("smartglasses.configure")
+local glasses   = require("smartglasses.smartglasses")
+local renderer  = require("smartglasses.renderer")
+local threads   = require("smartglasses.threads")
 
 local HUD_VERSION = "1.3.2"
 
@@ -59,7 +59,7 @@ local config = glasses.config
 log.init(config.LogPath, config.LogMode, config.LogDebug)
 
 log.info("========================================")
-log.info("BOOTING smartglasses_display v" .. HUD_VERSION)
+log.info("BOOTING smartglasses v" .. HUD_VERSION)
 log.info("========================================")
 
 crash.set_env("glasses_hud", HUD_VERSION)

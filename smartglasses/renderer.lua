@@ -2,7 +2,7 @@
 -- Advanced Peripherals Overlay Module rendering control
 --
 
-local glasses    = require("smartglasses_display.smartglasses")
+local glasses    = require("smartglasses.smartglasses")
 
 local types      = require("scada-common.types")
 

@@ -5,7 +5,7 @@
 local log         = require("scada-common.log")
 local util        = require("scada-common.util")
 
-local system      = require("smartglasses_display.config.system")
+local system      = require("smartglasses.config.system")
 
 local core        = require("graphics.core")
 local themes      = require("graphics.themes")

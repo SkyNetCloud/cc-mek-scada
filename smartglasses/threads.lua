@@ -8,8 +8,8 @@ local ppm      = require("scada-common.ppm")
 local tcd      = require("scada-common.tcd")
 local util     = require("scada-common.util")
 
-local glasses  = require("smartglasses_display.smartglasses")
-local renderer = require("smartglasses_display.renderer")
+local glasses  = require("smartglasses.smartglasses")
+local renderer = require("smartglasses.renderer")
 
 local threads = {}
 
